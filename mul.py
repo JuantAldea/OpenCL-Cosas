@@ -2,13 +2,14 @@
 
 import numpy as np
 import pyopencl as cl
+import sys
 
 # a_np = np.random.random((3, 6)).astype(np.float32)
 # b_np = np.random.random((3, 6)).astype(np.float32)
 # r_np = np.random.random((3, 6)).astype(np.float32)
 
 a = np.identity(3, dtype=np.float32)
-a_np = np.vstack((a, a,))
+a_np = np.vstack(tuple(a for i in range(int(sys.argv[1]))))
 b_np = np.zeros_like(a_np)
 b_np = np.random.random(a_np.shape).astype(np.float32)
 #a_np = np.identity(3, dtype=np.float32) 
@@ -47,10 +48,10 @@ __kernel void mul(__global float *A, __global float *B, __global float *C, const
 
 prg = cl.Program(ctx, source).build()
 
-prg.mul(queue, (18, ), None, a_g, b_g, r_g, np.int32(3), np.int32(3), global_offset=None, wait_for=None, g_times_l=False).wait()
+prg.mul(queue, (a_np.size,), None, a_g, b_g, r_g, np.int32(3), np.int32(3), global_offset=None, wait_for=None, g_times_l=False).wait()
 
 cl.enqueue_copy(queue, r_np, r_g)
 
 
 print(r_np)
-print(np.linalg.norm(r_np))
+print("||B - I * B|| = %d" % np.linalg.norm(b_np - r_np))
