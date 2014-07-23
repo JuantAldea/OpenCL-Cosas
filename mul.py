@@ -23,7 +23,7 @@ elif sys.argv[1] == "1":
     a_np = np.vstack(tuple(identityN for i in range(int(sys.argv[3]))))
     b_np = np.random.random(a_np.shape).astype(np.float32)
 else:
-    a_np = np.vstack(tuple(np.random.random(identityN.shape).astype(np.float32) for i in range(int(sys.argv[3]))))
+    a_np = np.random.random((int(sys.argv[2]), int(sys.argv[2]) * int(sys.argv[3]))).astype(np.float32)
     b_np = np.random.random(a_np.shape).astype(np.float32)
 
 r_np = np.zeros_like(a_np)
