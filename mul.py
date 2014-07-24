@@ -31,7 +31,7 @@ elif sys.argv[1] == "1":
     a_np = np.vstack(tuple(identityN for i in range(n_matrices)))
     b_np = np.random.random(a_np.shape).astype(np.float32)
 else:
-    a_np = np.random.random(dimension, dimension * n_matrices).astype(np.float32)
+    a_np = np.random.random((dimension, dimension * n_matrices)).astype(np.float32)
     b_np = np.random.random(a_np.shape).astype(np.float32)
 
 if sys.argv[4] == '1':
