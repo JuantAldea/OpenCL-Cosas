@@ -14,6 +14,13 @@ def roundUpToNextPowerOfTwo(x):
     x += 1
     return x;
 
+def call_kernel(kernel, parameters, debug = False):
+    evt = kernel(*parameters)
+    evt.wait()
+    if debug: 
+        print("T: %f == %s" % (1e-9*(evt.profile.end - evt.profile.start), kernel.function_name))
+    return evt.profile.end - evt.profile.start
+
 if len(sys.argv) != 5:
     print("%s [B_identidad = 0, B_rand = 1, ambos_tres_rand = _] [dimension] [n_matrices] [padd = 1; !padd = _]" % sys.argv[0]);
     exit(0)
@@ -61,94 +68,95 @@ mf = cl.mem_flags
 a_g = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=a_np)
 b_g = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=b_np)
 r_g = cl.Buffer(ctx, mf.WRITE_ONLY, a_np.nbytes)
-r2_g = cl.Buffer(ctx, mf.WRITE_ONLY, a_np.nbytes)
 
-source2 = """
-kernel void zero(global float *C, const int dim1, const int dim2, const int length)
-{
-   int j = get_global_id(0);
-   int matrix_index =  j / length;
-   int i = j % dim1;
-   j = (j - matrix_index * length) / dim1;
-   C[matrix_index * length + i * dim1 + j] = 0;
-}
-"""
+kernels_file = open ("mul.cl", "r")
 
-source = """
-kernel void mul(global float *A, global float *B, global float *C, const int dim1, const int dim2, const int length)
-{
-   int j = get_global_id(0);
-   int matrix_index =  j / length;
-   int i = j % dim1;
-   j = (j - matrix_index * length) / dim1;
+kernels_src = kernels_file.read()
+kernels_file.close()
 
-   float sum = 0;
-   for (int k = 0; k < dim1; k++) {
-      sum += A[matrix_index * length + i * dim1 + k] * B[matrix_index * length + k * dim2 + j];
-   }
+prg = cl.Program(ctx, kernels_src).build()
 
-   C[matrix_index * length + i * dim1 + j] = sum;
-
-//   C[matrix_index * length + i * dim1 + j] = matrix_index * length + i * dim1 + j;
-//   C[matrix_index * length + i * dim1 + j] = (j %3  == 0) * get_local_size(0) + (j%3 == 1) * get_num_groups(0) + (j%3 == 2) * get_global_size(0);
-//   C[matrix_index * length + i * dim1 + j] = C[matrix_index * length + i * dim1 + j] + 1 ;
-}
-"""
-
-source3 = """
-kernel void mul_local(global float *A, global float *B, global float *C, const int dim1, const int dim2, const int length)
-{
-   local float a[1024];
-   local float b[1024];
-
-   int j = get_global_id(0);
-   int matrix_index =  j / length;
-   int i = j % dim1;
-   j = (j - matrix_index * length) / dim1;
-    
-   event_t evt = async_work_group_copy(a, &(A[matrix_index * length]), get_local_size(0), 0);
-   wait_group_events(1, &evt);
-   event_t evt2 = async_work_group_copy(b, &(B[matrix_index * length]), get_local_size(0), 0);
-   wait_group_events(1, &evt2);
-
-   float sum = 0;
-   for (int k = 0; k < dim1; k++) {
-      sum += a[i * dim1 + k] * b[k * dim2 + j];
-   }
-
-   C[matrix_index * length + i * dim1 + j] = sum;
-
-//   C[matrix_index * length + i * dim1 + j] = matrix_index * length + i * dim1 + j;
-//   C[matrix_index * length + i * dim1 + j] = (j %3  == 0) * get_local_size(0) + (j%3 == 1) * get_num_groups(0) + (j%3 == 2) * get_global_size(0);
-//   C[matrix_index * length + i * dim1 + j] = C[matrix_index * length + i * dim1 + j] + 1 ;
-}
-"""
-
-prg = cl.Program(ctx, source + source2 + source3).build()
 print("Work size = %d" % a_np.size)
-prg.zero(queue, (a_np.size,), None, r_g,  np.int32(identityN.shape[0]), np.int32(identityN.shape[1]), np.int32(identityN.size), global_offset=None, wait_for=None, g_times_l=False).wait()
 
-exec_evt_2 = prg.mul(queue, (a_np.size,), None, b_g, a_g, r2_g, np.int32(identityN.shape[0]), np.int32(identityN.shape[1]), np.int32(identityN.size), global_offset=None, wait_for=None, g_times_l=False)
-exec_evt_2.wait()
-print("T2: %f" % (1e-9*(exec_evt_2.profile.end - exec_evt_2.profile.start)))
+#mul_kernel_parameters = (queue, (a_np.size,), None, a_g, b_g, r_g, np.int32(identityN.shape[0]), np.int32(identityN.shape[1]), np.int32(identityN.size), global_offset=None, wait_for=None, g_times_l=False)
+zero_kernel_parameters = (queue, (a_np.size,), None, r_g,  np.int32(identityN.shape[0]), np.int32(identityN.shape[1]), np.int32(identityN.size));
+mul_kernel_parameters = (queue, (a_np.size,), (972, ), a_g, b_g, r_g, np.int32(identityN.shape[0]), np.int32(identityN.shape[1]), np.int32(identityN.size))
+mul_kernel_parameters2 = (queue, (a_np.size,), (81, ), a_g, b_g, r_g, np.int32(identityN.shape[0]), np.int32(identityN.shape[1]), np.int32(identityN.size))
 
-exec_evt_1 = prg.mul(queue, (a_np.size,), None, a_g, b_g, r_g, np.int32(identityN.shape[0]), np.int32(identityN.shape[1]), np.int32(identityN.size), global_offset=None, wait_for=None, g_times_l=False)
-exec_evt_1.wait()
-print("T1: %f" % (1e-9*(exec_evt_1.profile.end - exec_evt_1.profile.start)))
+time_global = 0;
+time_local = 0;
+time_local_unrolled = 0
+time_local_unrolled_vectors3 = 0
+time_local_unrolled_vectors4 = 0
+time_local_unrolled_vectors8 = 0
 
+tg = []
+tl = []
+tlu = []
+tluv3 = []
+tluv4 = []
+tluv8 = []
 
+n_tests = 2500
+for i in range(n_tests):
+    if i % 100 == 0 and i != 0:
+        print("    t      std    n = %d" % (i,))
+        print("%f %f global" % (1e-9 * (time_global / float(i)),1e-9 * np.std(tg)))
+        print("%f %f local" % (1e-9 * (time_local / float(i)), 1e-9 * np.std(tl)))
+        print("%f %f l. unrolled" % (1e-9 * (time_local_unrolled / float(i)), 1e-9 * np.std(tlu)))
+        print("%f %f l. u. vector3" % (1e-9 * (time_local_unrolled_vectors3 / float(i)), 1e-9 * np.std(tluv3)))
+        print("%f %f l. u. vector4" % (1e-9 * (time_local_unrolled_vectors4 / float(i)), 1e-9 * np.std(tluv4)))
+        print("%f %f l. u. vector8" % (1e-9 * (time_local_unrolled_vectors8 / float(i)), 1e-9 * np.std(tluv8)))
+
+#    call_kernel(prg.zero, zero_kernel_parameters)
+    time = call_kernel(prg.mul_flat_global, mul_kernel_parameters)
+    time_global += time
+    tg.append(time)
+
+#    call_kernel(prg.zero, zero_kernel_parameters)
+    time = call_kernel(prg.mul_flat_local, mul_kernel_parameters)
+    time_local += time
+    tl.append(time)
+
+#    call_kernel(prg.zero, zero_kernel_parameters)
+    time = call_kernel(prg.mul_flat_local_unrolled, mul_kernel_parameters)
+    time_local_unrolled += time
+    tlu.append(time)
+    
+#    call_kernel(prg.zero, zero_kernel_parameters)
+    time = call_kernel(prg.mul_flat_local_unrolled_vectors3, mul_kernel_parameters)
+    time_local_unrolled_vectors3 += time
+    tluv3.append(time)
+    
+#    call_kernel(prg.zero, zero_kernel_parameters)
+    time = call_kernel(prg.mul_flat_local_unrolled_vectors4, mul_kernel_parameters)
+    time_local_unrolled_vectors4 += time
+    tluv4.append(time)
+
+#    call_kernel(prg.zero, zero_kernel_parameters)
+    time = call_kernel(prg.mul_flat_local_unrolled_vectors8, mul_kernel_parameters)
+    time_local_unrolled_vectors8 += time
+    tluv8.append(time)
+ 
+print("    t      std    n = %d" % (i,))
+print("%f %f global" % (1e-9 * (time_global / float(n_tests)),1e-9 * np.std(tg)))
+print("%f %f local" % (1e-9 * (time_local / float(n_tests)), 1e-9 * np.std(tl)))
+print("%f %f l. unrolled" % (1e-9 * (time_local_unrolled / float(n_tests)), 1e-9 * np.std(tlu)))
+print("%f %f l. u. vector3" % (1e-9 * (time_local_unrolled_vectors3 / float(n_tests)), 1e-9 * np.std(tluv3)))
+print("%f %f l. u. vector4" % (1e-9 * (time_local_unrolled_vectors4 / float(n_tests)), 1e-9 * np.std(tluv4)))
+print("%f %f l. u. vector8" % (1e-9 * (time_local_unrolled_vectors8 / float(n_tests)), 1e-9 * np.std(tluv8)))
 
 cl.enqueue_copy(queue, r_np, r_g)
-cl.enqueue_copy(queue, r2_np, r2_g)
+#cl.enqueue_copy(queue, r2_np, r2_g)
 
 print("A * B =")
 print(r_np)
-print("B * A =")
-print(r2_np)
+#print("B * A =")
+#print(r2_np)
 
-#la comparacion solo tiene sentido si A == I
+#la comparacion solo tiene sentido si A o B == I
 if int(sys.argv[1]) < 2:
     print("||B - A * B|| = %f" % np.linalg.norm(b_np - r_np))
-    print("||B - B * A|| = %f" % np.linalg.norm(b_np - r2_np))
-    print("||A * B - B * A|| = %f" % np.linalg.norm(r_np - r2_np))
+#   print("||B - B * A|| = %f" % np.linalg.norm(b_np - r2_np))
+#    print("||A * B - B * A|| = %f" % np.linalg.norm(r_np - r2_np))
 
