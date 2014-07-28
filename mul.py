@@ -83,80 +83,49 @@ zero_kernel_parameters = (queue, (a_np.size,), None, r_g,  np.int32(identityN.sh
 mul_kernel_parameters = (queue, (a_np.size,), (972, ), a_g, b_g, r_g, np.int32(identityN.shape[0]), np.int32(identityN.shape[1]), np.int32(identityN.size))
 mul_kernel_parameters2 = (queue, (a_np.size,), (81, ), a_g, b_g, r_g, np.int32(identityN.shape[0]), np.int32(identityN.shape[1]), np.int32(identityN.size))
 
-time_global = 0;
-time_local = 0;
-time_local_unrolled = 0
-time_local_unrolled_vectors3 = 0
-time_local_unrolled_vectors4 = 0
-time_local_unrolled_vectors8 = 0
+time_samples = {}
+total_time = {}
+kernel_parameters = {}
 
-tg = []
-tl = []
-tlu = []
-tluv3 = []
-tluv4 = []
-tluv8 = []
+for kernel in prg.all_kernels():
+    time_samples[kernel.function_name] = []
+    total_time[kernel.function_name] = 0
+    if kernel.function_name == 'zero':
+        kernel_parameters[kernel.function_name] = zero_kernel_parameters
+    else:
+        kernel_parameters[kernel.function_name] = mul_kernel_parameters
+
+
+excluded_kernels = ['mul_flat_global', 'zero']
+
+kernel_list = [kernel.function_name for kernel in prg.all_kernels() if kernel.function_name not in excluded_kernels]
+kernel_list.sort()
 
 n_tests = 2500
+
 for i in range(n_tests):
     if i % 100 == 0 and i != 0:
         print("    t      std    n = %d" % (i,))
-        print("%f %f global" % (1e-9 * (time_global / float(i)),1e-9 * np.std(tg)))
-        print("%f %f local" % (1e-9 * (time_local / float(i)), 1e-9 * np.std(tl)))
-        print("%f %f l. unrolled" % (1e-9 * (time_local_unrolled / float(i)), 1e-9 * np.std(tlu)))
-        print("%f %f l. u. vector3" % (1e-9 * (time_local_unrolled_vectors3 / float(i)), 1e-9 * np.std(tluv3)))
-        print("%f %f l. u. vector4" % (1e-9 * (time_local_unrolled_vectors4 / float(i)), 1e-9 * np.std(tluv4)))
-        print("%f %f l. u. vector8" % (1e-9 * (time_local_unrolled_vectors8 / float(i)), 1e-9 * np.std(tluv8)))
+        for kernel in kernel_list:
+            print("%f %f %s" % (1e-9 * (total_time[kernel] / float(i)),1e-9 * np.std(time_samples[kernel]), kernel))
 
-#    call_kernel(prg.zero, zero_kernel_parameters)
-    time = call_kernel(prg.mul_flat_global, mul_kernel_parameters)
-    time_global += time
-    tg.append(time)
+    for kernel in prg.all_kernels():
+        time = call_kernel(kernel, kernel_parameters[kernel.function_name])
+        total_time[kernel.function_name] += time
+        time_samples[kernel.function_name].append(time)
 
-#    call_kernel(prg.zero, zero_kernel_parameters)
-    time = call_kernel(prg.mul_flat_local, mul_kernel_parameters)
-    time_local += time
-    tl.append(time)
 
-#    call_kernel(prg.zero, zero_kernel_parameters)
-    time = call_kernel(prg.mul_flat_local_unrolled, mul_kernel_parameters)
-    time_local_unrolled += time
-    tlu.append(time)
-    
-#    call_kernel(prg.zero, zero_kernel_parameters)
-    time = call_kernel(prg.mul_flat_local_unrolled_vectors3, mul_kernel_parameters)
-    time_local_unrolled_vectors3 += time
-    tluv3.append(time)
-    
-#    call_kernel(prg.zero, zero_kernel_parameters)
-    time = call_kernel(prg.mul_flat_local_unrolled_vectors4, mul_kernel_parameters)
-    time_local_unrolled_vectors4 += time
-    tluv4.append(time)
-
-#    call_kernel(prg.zero, zero_kernel_parameters)
-    time = call_kernel(prg.mul_flat_local_unrolled_vectors8, mul_kernel_parameters)
-    time_local_unrolled_vectors8 += time
-    tluv8.append(time)
- 
 print("    t      std    n = %d" % (i,))
-print("%f %f global" % (1e-9 * (time_global / float(n_tests)),1e-9 * np.std(tg)))
-print("%f %f local" % (1e-9 * (time_local / float(n_tests)), 1e-9 * np.std(tl)))
-print("%f %f l. unrolled" % (1e-9 * (time_local_unrolled / float(n_tests)), 1e-9 * np.std(tlu)))
-print("%f %f l. u. vector3" % (1e-9 * (time_local_unrolled_vectors3 / float(n_tests)), 1e-9 * np.std(tluv3)))
-print("%f %f l. u. vector4" % (1e-9 * (time_local_unrolled_vectors4 / float(n_tests)), 1e-9 * np.std(tluv4)))
-print("%f %f l. u. vector8" % (1e-9 * (time_local_unrolled_vectors8 / float(n_tests)), 1e-9 * np.std(tluv8)))
+for kernel in kernel_list:
+    print("%f %f %s" % (1e-9 * (total_time[kernel] / float(n_tests)),1e-9 * np.std(time_samples[kernel]), kernel))
+
 
 cl.enqueue_copy(queue, r_np, r_g)
-#cl.enqueue_copy(queue, r2_np, r2_g)
 
 print("A * B =")
 print(r_np)
-#print("B * A =")
-#print(r2_np)
 
 #la comparacion solo tiene sentido si A o B == I
 if int(sys.argv[1]) < 2:
     print("||B - A * B|| = %f" % np.linalg.norm(b_np - r_np))
-#   print("||B - B * A|| = %f" % np.linalg.norm(b_np - r2_np))
-#    print("||A * B - B * A|| = %f" % np.linalg.norm(r_np - r2_np))
 
