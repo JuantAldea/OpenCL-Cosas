@@ -96,12 +96,12 @@ for kernel in prg.all_kernels():
         kernel_parameters[kernel.function_name] = mul_kernel_parameters
 
 
-excluded_kernels = ['mul_flat_global', 'zero']
+excluded_kernels = ['zero']
 
 kernel_list = [kernel.function_name for kernel in prg.all_kernels() if kernel.function_name not in excluded_kernels]
 kernel_list.sort()
 
-n_tests = 2500
+n_tests = 10000
 
 for i in range(n_tests):
     if i % 100 == 0 and i != 0:
